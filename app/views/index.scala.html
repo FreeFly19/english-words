@@ -1,0 +1,44 @@
+@import java.text.SimpleDateFormat
+@import java.util.Date
+@(translations: List[Translate], data: List[RequestTranslate])
+
+@main("Welcome to Play") {
+    <form action="" method="get">
+        <input type="text" name="translate">
+
+        <button>Translate</button>
+    </form>
+
+    <ul>
+    @for(translate <- translations) {
+        <li>@translate.value <small>Votes: <b>@translate.votes</b></small></li>
+    }
+    </ul>
+
+
+    <table border="1">
+        <tr>
+            <th>Phrase</th>
+            <th>Date</th>
+            <th>Translations</th>
+        </tr>
+    @for(r <- data) {
+        <tr>
+            <th>@r.phrase</th>
+            <td>@(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date(r.date)))</td>
+            <td>
+                <ul>
+                @for(t <- r.translates) {
+                    <li>
+                        <i>@t.value</i>
+                        <small>Votes: <b>@t.votes</b></small>
+                        <img src="@t.pic_url" alt="">
+                    </li>
+                }
+                </ul>
+            </td>
+        </tr>
+
+    }
+    </table>
+}
