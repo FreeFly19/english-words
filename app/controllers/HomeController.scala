@@ -11,6 +11,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.scala.DefaultScalaModule
 import com.fasterxml.jackson.module.scala.experimental.ScalaObjectMapper
 import io.gatling.jsonpath.JsonPath
+import play.api.Configuration
 import play.api.libs.json.Json
 import play.api.libs.ws.WSClient
 import play.api.mvc._
@@ -24,13 +25,14 @@ import scala.concurrent.{ExecutionContext, Future}
 @Singleton
 class HomeController @Inject()(cc: ControllerComponents,
                                ws: WSClient,
+                               config: Configuration,
                                implicit val ec: ExecutionContext,
                                implicit val mv: Materializer) extends AbstractController(cc) {
 
   val objectMapper = new ObjectMapper() with ScalaObjectMapper
   objectMapper.registerModule(DefaultScalaModule)
 
-  val file = Paths.get("/Users/freefly/english-words-db/words.json")
+  val file = Paths.get(config.get[String]("db.file"))
 
   var data = List[RequestTranslate]()
 
