@@ -4,7 +4,7 @@ import java.nio.file.{Path, Paths, StandardOpenOption}
 import java.util.Date
 import javax.inject._
 
-import akka.stream.scaladsl.{FileIO, Flow, Keep, Sink, Source}
+import akka.stream.scaladsl.{FileIO, Flow, Framing, Keep, Sink, Source}
 import akka.stream.{IOResult, Materializer}
 import akka.util.ByteString
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -35,9 +35,10 @@ class HomeController @Inject()(cc: ControllerComponents,
   var data = List[RequestTranslate]()
 
   val foreach: Future[IOResult] = FileIO.fromPath(file)
-    .map(_.decodeString("UTF-8"))
-    .map(content => content.split("\n").reverse.filter(_.nonEmpty).map(objectMapper.readValue(_, classOf[RequestTranslate])))
-    .to(Sink.foreach(s => data = s.toList))
+    .via(Framing.delimiter(ByteString("\n"), 8192, true).map(_.utf8String))
+    .filter(_.nonEmpty)
+    .map(content => objectMapper.readValue(content, classOf[RequestTranslate]))
+    .to(Sink.foreach(s => data = s :: data))
     .run()
 
 
@@ -67,6 +68,29 @@ class HomeController @Inject()(cc: ControllerComponents,
           Ok(views.html.index(res, data))
         })
     }
+  }
+
+  def plugin() = Action.async { implicit request: Request[AnyContent] =>
+    val translate = request.getQueryString("translate")
+
+    ws
+      .url("http://api.lingualeo.com/gettranslates?port=1001")
+      .post(Map("word" -> translate.get))
+      .map(r => {
+        println(Json.parse(r.body))
+
+        val list = JsonPath.query("$.translate[*]['value', 'pic_url', 'votes']", new ObjectMapper().readValue(r.body, classOf[Object]))
+
+        var res = list.right.get.toList.grouped(3).toList.map(l => {
+          Translate(l(0).toString, l(1).toString, l(2).toString.toLong)
+        })
+
+        val t = RequestTranslate(translate.get, new Date().getTime, res)
+        data = t :: data
+        write(t)
+
+        Ok(views.html.plugin(translate.get, res))
+      })
   }
 
   def lineSink(file: Path): Sink[String, Future[IOResult]] =

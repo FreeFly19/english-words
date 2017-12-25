@@ -1,0 +1,10 @@
+@(word: String,translations: List[Translate])
+<h2>
+    @word
+</h2>
+
+<ul>
+@for(translate <- translations) {
+    <li>@translate.value <small>Votes: <b>@translate.votes</b></small></li>
+}
+</ul>
