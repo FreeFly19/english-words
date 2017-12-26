@@ -12,7 +12,7 @@ import com.fasterxml.jackson.module.scala.DefaultScalaModule
 import com.fasterxml.jackson.module.scala.experimental.ScalaObjectMapper
 import io.gatling.jsonpath.JsonPath
 import play.api.Configuration
-import play.api.libs.json.Json
+import play.api.libs.json._
 import play.api.libs.ws.WSClient
 import play.api.mvc._
 
@@ -26,87 +26,64 @@ import scala.concurrent.{ExecutionContext, Future}
 class HomeController @Inject()(cc: ControllerComponents,
                                ws: WSClient,
                                config: Configuration,
+                               playBodyParsers: PlayBodyParsers,
                                implicit val ec: ExecutionContext,
                                implicit val mv: Materializer) extends AbstractController(cc) {
+  implicit val translatesFormat = Json.format[Translate]
 
-  val objectMapper = new ObjectMapper() with ScalaObjectMapper
+  def index() = Action(Ok(views.html.index(data)))
+
+  def translate() = Action.async(playBodyParsers.json) { implicit request: Request[JsValue] =>
+    request.body \ "word" match {
+      case JsDefined(JsString(word)) => translateAndSave(word).map(translates => Ok(Json.toJson(translates)))
+      case _ => Future(BadRequest)
+    }
+  }
+
+  private val objectMapper = new ObjectMapper() with ScalaObjectMapper
   objectMapper.registerModule(DefaultScalaModule)
 
-  val file = Paths.get(config.get[String]("db.file"))
+  private val file = Paths.get(config.get[String]("db.file"))
 
-  var data = List[RequestTranslate]()
+  private var data = List[RequestTranslate]()
 
-  val foreach: Future[IOResult] = FileIO.fromPath(file)
+  private val foreach: Future[IOResult] = FileIO.fromPath(file)
     .via(Framing.delimiter(ByteString("\n"), 8192, true).map(_.utf8String))
     .filter(_.nonEmpty)
     .map(content => objectMapper.readValue(content, classOf[RequestTranslate]))
     .to(Sink.foreach(s => data = s :: data))
     .run()
 
-
-  def index() = Action.async { implicit request: Request[AnyContent] =>
-    val translate = request.getQueryString("translate")
-
-    if (translate.isEmpty) {
-      Future(Ok(views.html.index(Nil, data)))
-    }
-    else {
-      ws
-        .url("http://api.lingualeo.com/gettranslates?port=1001")
-        .post(Map("word" -> translate.get))
-        .map(r => {
-          println(Json.parse(r.body))
-
-          val list = JsonPath.query("$.translate[*]['value', 'pic_url', 'votes']", new ObjectMapper().readValue(r.body, classOf[Object]))
-
-          var res = list.right.get.toList.grouped(3).toList.map(l => {
-            Translate(l(0).toString, l(1).toString, l(2).toString.toLong)
-          })
-
-          val t = RequestTranslate(translate.get, new Date().getTime, res)
-          data = t :: data
-          write(t)
-
-          Ok(views.html.index(res, data))
-        })
-    }
-  }
-
-  def plugin() = Action.async { implicit request: Request[AnyContent] =>
-    val translate = request.getQueryString("translate")
-
-    ws
-      .url("http://api.lingualeo.com/gettranslates?port=1001")
-      .post(Map("word" -> translate.get))
-      .map(r => {
-        println(Json.parse(r.body))
-
-        val list = JsonPath.query("$.translate[*]['value', 'pic_url', 'votes']", new ObjectMapper().readValue(r.body, classOf[Object]))
-
-        var res = list.right.get.toList.grouped(3).toList.map(l => {
-          Translate(l(0).toString, l(1).toString, l(2).toString.toLong)
-        })
-
-        val t = RequestTranslate(translate.get, new Date().getTime, res)
-        data = t :: data
-        write(t)
-
-        Ok(views.html.plugin(translate.get, res))
-      })
-  }
-
-  def lineSink(file: Path): Sink[String, Future[IOResult]] =
+  private def lineSink(file: Path): Sink[String, Future[IOResult]] =
     Flow[String]
       .map(s => ByteString(s + "\n"))
       .toMat(FileIO.toPath(file, Set(StandardOpenOption.APPEND)))(Keep.right)
 
 
-  def write(requestTranslate: RequestTranslate) = {
+  private def translateAndSave(wordToTranslate: String) =
+    ws
+      .url("http://api.lingualeo.com/gettranslates?port=1001")
+      .post(Map("word" -> wordToTranslate))
+      .map(r => {
+        val list = JsonPath.query("$.translate[*]['value', 'pic_url', 'votes']", new ObjectMapper().readValue(r.body, classOf[Object]))
+
+        var translates = list.right.get.toList.grouped(3).toList.map(l => {
+          Translate(l(0).toString, l(1).toString, l(2).toString.toLong)
+        })
+
+        val t = RequestTranslate(wordToTranslate, new Date().getTime, translates)
+        write(t)
+        data = t :: data
+
+        translates
+      })
+
+  private def write(requestTranslate: RequestTranslate) =
     Source
       .single(objectMapper.writeValueAsString(requestTranslate))
       .runWith(lineSink(file))
-  }
 }
 
 case class Translate(value: String, pic_url: String, votes: Long)
+
 case class RequestTranslate(phrase: String, date: Long, translates: List[Translate])

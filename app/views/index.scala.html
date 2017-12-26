@@ -1,6 +1,6 @@
 @import java.text.SimpleDateFormat
 @import java.util.Date
-@(translations: List[Translate], data: List[RequestTranslate])
+@(data: List[RequestTranslate])
 
 @main("Welcome to Play") {
     <form action="" method="get">
@@ -8,12 +8,6 @@
 
         <button>Translate</button>
     </form>
-
-    <ul>
-    @for(translate <- translations) {
-        <li>@translate.value <small>Votes: <b>@translate.votes</b></small></li>
-    }
-    </ul>
 
 
     <table border="1">
@@ -32,7 +26,6 @@
                     <li>
                         <i>@t.value</i>
                         <small>Votes: <b>@t.votes</b></small>
-                        <img src="@t.pic_url" alt="">
                     </li>
                 }
                 </ul>
