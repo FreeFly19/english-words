@@ -3,10 +3,10 @@
 @(data: List[RequestTranslate])
 
 @main("Welcome to Play") {
-    <form action="" method="get">
-        <input type="text" name="translate">
-
-        <button>Translate</button>
+    <form>
+        <input type="text" name="word" id="translate-word">
+        <button type="button" id="translate-button">Translate</button>
+        <pre id="translate-result"></pre>
     </form>
 
 
