@@ -45,6 +45,8 @@ class HomeController @Inject()(cc: ControllerComponents,
 
   private val file = Paths.get(config.get[String]("db.file"))
 
+  if (!file.toFile.exists()) file.toFile.createNewFile()
+
   private var data = List[RequestTranslate]()
 
   private val foreach: Future[IOResult] = FileIO.fromPath(file)

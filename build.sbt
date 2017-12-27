@@ -1,3 +1,5 @@
+import com.typesafe.sbt.packager.docker.{Cmd, ExecCmd}
+
 name := """english-words"""
 organization := "com.example"
 
@@ -20,3 +22,6 @@ libraryDependencies += "com.fasterxml.jackson.module" %% "jackson-module-scala" 
 
 // Adds additional packages into conf/routes
 // play.sbt.routes.RoutesKeys.routesImport += "com.example.binders._"
+
+dockerCommands += Cmd("ENV", "DB_FILE /data/words.txt")
+dockerExposedVolumes += "/data"
