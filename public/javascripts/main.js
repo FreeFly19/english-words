@@ -1,7 +1,9 @@
 document.addEventListener('DOMContentLoaded', () => {
-    const btn = document.getElementById('translate-button');
+    const form = document.getElementById('translation-form');
 
-    btn.addEventListener('click', (e) => {
+    form.addEventListener('submit', (e) => {
+        e.preventDefault();
+
         const xhr = new XMLHttpRequest();
 
         xhr.open("PUT", "translate");

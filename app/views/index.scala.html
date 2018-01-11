@@ -3,9 +3,9 @@
 @(data: List[RequestTranslate])
 
 @main("Welcome to Play") {
-    <form>
+    <form id="translation-form">
         <input type="text" name="word" id="translate-word">
-        <button type="button" id="translate-button">Translate</button>
+        <button type="submit" id="translate-button">Translate</button>
         <pre id="translate-result"></pre>
     </form>
 
