@@ -2,8 +2,8 @@ package controllers
 
 import java.nio.file.{Path, Paths, StandardOpenOption}
 import java.util.Date
-import javax.inject._
 
+import javax.inject._
 import akka.stream.scaladsl.{FileIO, Flow, Framing, Keep, Sink, Source}
 import akka.stream.{IOResult, Materializer}
 import akka.util.ByteString
@@ -11,6 +11,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.scala.DefaultScalaModule
 import com.fasterxml.jackson.module.scala.experimental.ScalaObjectMapper
 import io.gatling.jsonpath.JsonPath
+import models.TranslationRepository
 import play.api.Configuration
 import play.api.libs.json._
 import play.api.libs.ws.WSClient
@@ -26,12 +27,16 @@ import scala.concurrent.{ExecutionContext, Future}
 class HomeController @Inject()(cc: ControllerComponents,
                                ws: WSClient,
                                config: Configuration,
+                               translationRepository: TranslationRepository,
                                playBodyParsers: PlayBodyParsers,
                                implicit val ec: ExecutionContext,
                                implicit val mv: Materializer) extends AbstractController(cc) {
   implicit val translatesFormat = Json.format[Translate]
 
-  def index() = Action(Ok(views.html.index(data)))
+  def index() = Action({
+    translationRepository.list().onComplete(r => println(r))
+    Ok(views.html.index(data))
+  })
 
   def translate() = Action.async(playBodyParsers.json) { implicit request: Request[JsValue] =>
     request.body \ "word" match {
