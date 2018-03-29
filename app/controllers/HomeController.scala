@@ -1,12 +1,10 @@
 package controllers
 
-import java.util.Date
-
 import akka.stream.Materializer
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.gatling.jsonpath.JsonPath
 import javax.inject._
-import models.{Phrase, PhrasesRepository}
+import models.{DbPhrase, DbTranslation, PhrasesRepository}
 import play.api.Configuration
 import play.api.libs.json._
 import play.api.libs.ws.WSClient
@@ -26,8 +24,10 @@ class HomeController @Inject()(cc: ControllerComponents,
                                playBodyParsers: PlayBodyParsers,
                                implicit val ec: ExecutionContext,
                                implicit val mv: Materializer) extends AbstractController(cc) {
-  implicit val translatesFormat = Json.format[Translation]
-  implicit val translatesFormat2 = Json.format[Phrase]
+  implicit val translatesFormat = Json.format[DbPhrase]
+  implicit val translatesFormat2 = Json.format[TranslationDto]
+  implicit val translatesFormat3 = Json.format[TranslationResult]
+  implicit val translatesFormat4 = Json.format[DbTranslation]
 
   def index() = Action {
     Ok(views.html.index(Nil))
@@ -41,30 +41,32 @@ class HomeController @Inject()(cc: ControllerComponents,
   }
 
   def pagedTranslations() = Action.async {
-    translationRepository.list().map(list => Ok(Json.toJson(list)))
+    translationRepository.list()
+      .map(_.map(t => dbPhraseToTranslationResult(t._1, t._2)))
+      .map(list => Ok(Json.toJson(list)))
   }
 
-  private def translateAndSave(wordToTranslate: String) =
+  private def translateAndSave(wordToTranslate: String): Future[TranslationResult] =
     ws
       .url("http://api.lingualeo.com/gettranslates?port=1001")
       .post(Map("word" -> wordToTranslate))
       .map(res => {
         val list = JsonPath.query("$.translate[*]['value', 'pic_url', 'votes']", new ObjectMapper().readValue(res.body, classOf[Object]))
 
-        var translates = list.right.get.toList.grouped(3).toList.map(l => {
-          Translation(l(0).toString, l(1).toString, l(2).toString.toLong)
-        })
+        var translations = list.right.get.toList.grouped(3).toList
+          .map(l => DbTranslation(None, None, l(0).toString, l(1).toString, l(2).toString.toLong))
 
-        TranslationResult(wordToTranslate, new Date().getTime, translates)
+        (DbPhrase(None, wordToTranslate), translations)
       })
-      .flatMap(save)
-      .map(_.translations)
+      .flatMap(phraseTranslations => translationRepository.add(phraseTranslations._1, phraseTranslations._2))
+      .map(phraseTranslations => dbPhraseToTranslationResult(phraseTranslations._1, phraseTranslations._2))
 
-  private def save(requestTranslate: TranslationResult) =
-    translationRepository.add(Phrase(text = requestTranslate.phrase))
-      .map(_ => requestTranslate)
+  private def dbPhraseToTranslationResult(p: DbPhrase, ts: Seq[DbTranslation]) =
+    TranslationResult(p.id.get, p.text, 0, ts.map(dbTranslationToTranslationDto))
+
+  private def dbTranslationToTranslationDto(t: DbTranslation) =
+    TranslationDto(t.id.get, t.value, t.picture, t.votes)
 }
 
-case class Translation(value: String, pic_url: String, votes: Long)
-
-case class TranslationResult(phrase: String, date: Long, translations: List[Translation])
+case class TranslationDto(id: Long, value: String, picture: String, votes: Long)
+case class TranslationResult(id: Long, phrase: String, date: Long, translations: Seq[TranslationDto])

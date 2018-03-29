@@ -4,31 +4,62 @@ import javax.inject.Inject
 import play.api.db.slick.DatabaseConfigProvider
 import slick.jdbc.JdbcProfile
 
+import scala.collection.mutable.ArrayBuffer
 import scala.concurrent.{ExecutionContext, Future}
 
 
-class PhrasesRepository  @Inject()(dbConfigProvider: DatabaseConfigProvider)(implicit ec: ExecutionContext) {
-  private val dbConfig = dbConfigProvider.get[JdbcProfile]
+class PhrasesRepository @Inject()(dbConfigProvider: DatabaseConfigProvider)(implicit ec: ExecutionContext) {
+  val dbConfig = dbConfigProvider.get[JdbcProfile]
 
   import dbConfig._
   import profile.api._
 
-
-  private class PhrasesTable(tag: Tag) extends Table[Phrase](tag, "phrases") {
+  class PhrasesTable(tag: Tag) extends Table[DbPhrase](tag, "phrases") {
 
     def id = column[Long]("id", O.PrimaryKey, O.AutoInc)
     def text = column[String]("text")
 
-    def * = (id.?, text) <> ((Phrase.apply _).tupled, Phrase.unapply)
+    def * = (id.?, text) <> ((DbPhrase.apply _).tupled, DbPhrase.unapply)
   }
 
-  private val translations = TableQuery[PhrasesTable]
+  val phrases = TableQuery[PhrasesTable]
 
-  def list(): Future[Seq[Phrase]] = db.run {
-    translations.result
+
+  class TranslationsTable(tag: Tag) extends Table[DbTranslation](tag, "translations") {
+
+    def id = column[Long]("id", O.PrimaryKey, O.AutoInc)
+    def phraseId = column[Long]("phrase_id")
+    def picture = column[String]("picture")
+    def value = column[String]("value")
+    def votes = column[Long]("votes")
+
+    def * = (id.?, phraseId.?, picture, value, votes) <> ((DbTranslation.apply _).tupled, DbTranslation.unapply)
+    def phrase = foreignKey("phrase", phraseId, phrases)(_.id)
   }
 
-  def add(phrase: Phrase): Future[Phrase] = db.run {
-    translations += phrase
-  }.map(_ => phrase)
+  val translations = TableQuery[TranslationsTable]
+
+  def list(): Future[Seq[(DbPhrase, Seq[DbTranslation])]] =
+    db.run(phrases joinLeft translations on (_.id === _.phraseId) result)
+      .map(list => {
+        // Todo: requires some refactoring
+        list.groupBy(_._1)
+          .map(p => p._2.foldLeft((p._1, ArrayBuffer[DbTranslation]()))((acc, el) => {
+            el._2.foreach(acc._2.+=)
+            acc
+          }))
+          .toSeq
+      })
+
+  def add(phrase: DbPhrase, trs: Seq[DbTranslation]): Future[(DbPhrase, List[DbTranslation])] = {
+    val insertPhrase = phrases returning phrases += _
+    val insertTranslation = translations returning translations += _
+
+    var actions = for {
+      p <- insertPhrase(phrase)
+      translations <- DBIO.sequence(trs.map(t => insertTranslation(t.copy(phraseId = p.id))))
+    } yield (p, translations.toList)
+
+    db.run(actions.transactionally)
+  }
 }
