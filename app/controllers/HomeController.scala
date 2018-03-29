@@ -1,17 +1,12 @@
 package controllers
 
-import java.nio.file.{Path, Paths, StandardOpenOption}
 import java.util.Date
 
-import javax.inject._
-import akka.stream.scaladsl.{FileIO, Flow, Framing, Keep, Sink, Source}
-import akka.stream.{IOResult, Materializer}
-import akka.util.ByteString
+import akka.stream.Materializer
 import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.scala.DefaultScalaModule
-import com.fasterxml.jackson.module.scala.experimental.ScalaObjectMapper
 import io.gatling.jsonpath.JsonPath
-import models.TranslationRepository
+import javax.inject._
+import models.{Phrase, PhrasesRepository}
 import play.api.Configuration
 import play.api.libs.json._
 import play.api.libs.ws.WSClient
@@ -27,16 +22,16 @@ import scala.concurrent.{ExecutionContext, Future}
 class HomeController @Inject()(cc: ControllerComponents,
                                ws: WSClient,
                                config: Configuration,
-                               translationRepository: TranslationRepository,
+                               translationRepository: PhrasesRepository,
                                playBodyParsers: PlayBodyParsers,
                                implicit val ec: ExecutionContext,
                                implicit val mv: Materializer) extends AbstractController(cc) {
-  implicit val translatesFormat = Json.format[Translate]
+  implicit val translatesFormat = Json.format[Translation]
+  implicit val translatesFormat2 = Json.format[Phrase]
 
-  def index() = Action({
-    translationRepository.list().onComplete(r => println(r))
-    Ok(views.html.index(data))
-  })
+  def index() = Action {
+    Ok(views.html.index(Nil))
+  }
 
   def translate() = Action.async(playBodyParsers.json) { implicit request: Request[JsValue] =>
     request.body \ "word" match {
@@ -45,52 +40,31 @@ class HomeController @Inject()(cc: ControllerComponents,
     }
   }
 
-  private val objectMapper = new ObjectMapper() with ScalaObjectMapper
-  objectMapper.registerModule(DefaultScalaModule)
-
-  private val file = Paths.get(config.get[String]("db.file"))
-
-  if (!file.toFile.exists()) file.toFile.createNewFile()
-
-  private var data = List[RequestTranslate]()
-
-  private val foreach: Future[IOResult] = FileIO.fromPath(file)
-    .via(Framing.delimiter(ByteString("\n"), 8192, true).map(_.utf8String))
-    .filter(_.nonEmpty)
-    .map(content => objectMapper.readValue(content, classOf[RequestTranslate]))
-    .to(Sink.foreach(s => data = s :: data))
-    .run()
-
-  private def lineSink(file: Path): Sink[String, Future[IOResult]] =
-    Flow[String]
-      .map(s => ByteString(s + "\n"))
-      .toMat(FileIO.toPath(file, Set(StandardOpenOption.APPEND)))(Keep.right)
-
+  def pagedTranslations() = Action.async {
+    translationRepository.list().map(list => Ok(Json.toJson(list)))
+  }
 
   private def translateAndSave(wordToTranslate: String) =
     ws
       .url("http://api.lingualeo.com/gettranslates?port=1001")
       .post(Map("word" -> wordToTranslate))
-      .map(r => {
-        val list = JsonPath.query("$.translate[*]['value', 'pic_url', 'votes']", new ObjectMapper().readValue(r.body, classOf[Object]))
+      .map(res => {
+        val list = JsonPath.query("$.translate[*]['value', 'pic_url', 'votes']", new ObjectMapper().readValue(res.body, classOf[Object]))
 
         var translates = list.right.get.toList.grouped(3).toList.map(l => {
-          Translate(l(0).toString, l(1).toString, l(2).toString.toLong)
+          Translation(l(0).toString, l(1).toString, l(2).toString.toLong)
         })
 
-        val t = RequestTranslate(wordToTranslate, new Date().getTime, translates)
-        write(t)
-        data = t :: data
-
-        translates
+        TranslationResult(wordToTranslate, new Date().getTime, translates)
       })
+      .flatMap(save)
+      .map(_.translations)
 
-  private def write(requestTranslate: RequestTranslate) =
-    Source
-      .single(objectMapper.writeValueAsString(requestTranslate))
-      .runWith(lineSink(file))
+  private def save(requestTranslate: TranslationResult) =
+    translationRepository.add(Phrase(text = requestTranslate.phrase))
+      .map(_ => requestTranslate)
 }
 
-case class Translate(value: String, pic_url: String, votes: Long)
+case class Translation(value: String, pic_url: String, votes: Long)
 
-case class RequestTranslate(phrase: String, date: Long, translates: List[Translate])
+case class TranslationResult(phrase: String, date: Long, translations: List[Translation])

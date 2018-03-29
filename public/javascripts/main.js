@@ -6,7 +6,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const xhr = new XMLHttpRequest();
 
-        xhr.open("PUT", "translate");
+        xhr.open("PUT", "api/translations");
         xhr.setRequestHeader("Content-Type", "application/json");
         xhr.send(JSON.stringify({word: document.getElementById('translate-word').value}));
         xhr.onreadystatechange = function () {

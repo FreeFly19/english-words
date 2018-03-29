@@ -1,6 +1,6 @@
 @import java.text.SimpleDateFormat
 @import java.util.Date
-@(data: List[RequestTranslate])
+@(data: List[TranslationResult])
 
 @main("Welcome to Play") {
     <form id="translation-form">
@@ -22,7 +22,7 @@
             <td>@(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date(r.date)))</td>
             <td>
                 <ul>
-                @for(t <- r.translates) {
+                @for(t <- r.translations) {
                     <li>
                         <i>@t.value</i>
                         <small>Votes: <b>@t.votes</b></small>
