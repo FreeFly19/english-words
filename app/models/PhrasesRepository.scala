@@ -1,5 +1,7 @@
 package models
 
+import java.sql.Timestamp
+
 import javax.inject.Inject
 import play.api.db.slick.DatabaseConfigProvider
 import slick.jdbc.JdbcProfile
@@ -18,8 +20,9 @@ class PhrasesRepository @Inject()(dbConfigProvider: DatabaseConfigProvider)(impl
 
     def id = column[Long]("id", O.PrimaryKey, O.AutoInc)
     def text = column[String]("text")
+    def createdAt = column[Timestamp]("created_at")
 
-    def * = (id.?, text) <> ((DbPhrase.apply _).tupled, DbPhrase.unapply)
+    def * = (id.?, text, createdAt) <> ((DbPhrase.apply _).tupled, DbPhrase.unapply)
   }
 
   val phrases = TableQuery[PhrasesTable]

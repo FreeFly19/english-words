@@ -1,8 +1,9 @@
 # --- !Ups
 create sequence phrases_id_seq;
-create table phrases(
-  id bigint not null default nextval('phrases_id_seq'),
-  text text, primary key(id)
+create table "phrases" (
+  "id" BIGSERIAL NOT NULL PRIMARY KEY,
+  "text" VARCHAR NOT NULL,
+  "created_at" TIMESTAMP NOT NULL
 );
 create table "translations" (
   "id" BIGSERIAL NOT NULL PRIMARY KEY,

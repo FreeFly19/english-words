@@ -1,5 +1,8 @@
 package controllers
 
+import java.sql.Timestamp
+import java.util.Date
+
 import akka.stream.Materializer
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.gatling.jsonpath.JsonPath
@@ -7,6 +10,7 @@ import javax.inject._
 import models.{DbPhrase, DbTranslation, PhrasesRepository}
 import play.api.Configuration
 import play.api.libs.json._
+import play.api.libs.json.Json._
 import play.api.libs.ws.WSClient
 import play.api.mvc._
 
@@ -24,6 +28,12 @@ class HomeController @Inject()(cc: ControllerComponents,
                                playBodyParsers: PlayBodyParsers,
                                implicit val ec: ExecutionContext,
                                implicit val mv: Materializer) extends AbstractController(cc) {
+
+  implicit val timestampFormat = new Format[Timestamp] {
+    def writes(t: Timestamp): JsValue = toJson(t.getTime)
+    def reads(json: JsValue): JsResult[Timestamp] = fromJson[Long](json).map(new Timestamp(_))
+  }
+
   implicit val translatesFormat = Json.format[DbPhrase]
   implicit val translatesFormat2 = Json.format[TranslationDto]
   implicit val translatesFormat3 = Json.format[TranslationResult]
@@ -56,13 +66,13 @@ class HomeController @Inject()(cc: ControllerComponents,
         var translations = list.right.get.toList.grouped(3).toList
           .map(l => DbTranslation(None, None, l(0).toString, l(1).toString, l(2).toString.toLong))
 
-        (DbPhrase(None, wordToTranslate), translations)
+        (DbPhrase(None, wordToTranslate, new Timestamp(new Date().getTime)), translations)
       })
       .flatMap(phraseTranslations => translationRepository.add(phraseTranslations._1, phraseTranslations._2))
       .map(phraseTranslations => dbPhraseToTranslationResult(phraseTranslations._1, phraseTranslations._2))
 
   private def dbPhraseToTranslationResult(p: DbPhrase, ts: Seq[DbTranslation]) =
-    TranslationResult(p.id.get, p.text, 0, ts.map(dbTranslationToTranslationDto))
+    TranslationResult(p.id.get, p.text, p.createdAt.getTime, ts.map(dbTranslationToTranslationDto))
 
   private def dbTranslationToTranslationDto(t: DbTranslation) =
     TranslationDto(t.id.get, t.value, t.picture, t.votes)
