@@ -52,6 +52,7 @@ class PhrasesRepository @Inject()(dbConfigProvider: DatabaseConfigProvider)(impl
             acc
           }))
           .toSeq
+          .sortBy(-_._1.createdAt.getTime)
       })
 
   def add(phrase: DbPhrase, trs: Seq[DbTranslation]): Future[(DbPhrase, List[DbTranslation])] = {
