@@ -34,49 +34,43 @@ class HomeController @Inject()(cc: ControllerComponents,
     def reads(json: JsValue): JsResult[Timestamp] = fromJson[Long](json).map(new Timestamp(_))
   }
 
-  implicit val translatesFormat = Json.format[DbPhrase]
-  implicit val translatesFormat2 = Json.format[TranslationDto]
-  implicit val translatesFormat3 = Json.format[TranslationResult]
-  implicit val translatesFormat4 = Json.format[DbTranslation]
-
-  def index() = Action {
-    Ok(views.html.index(Nil))
-  }
+  implicit val translationDtoFormatter = Json.format[TranslationDto]
+  implicit val phraseTranslationResultDtoFormatter = Json.format[PhraseTranslationResultDto]
 
   def translate() = Action.async(playBodyParsers.json) { implicit request: Request[JsValue] =>
-    request.body \ "word" match {
-      case JsDefined(JsString(word)) => translateAndSave(word).map(translates => Ok(Json.toJson(translates)))
+    request.body \ "phrase" match {
+      case JsDefined(JsString(word)) => translatePhraseAndSave(word).map(translates => Ok(Json.toJson(translates)))
       case _ => Future(BadRequest)
     }
   }
 
-  def pagedTranslations() = Action.async {
+  def phrasesList() = Action.async {
     translationRepository.list()
-      .map(_.map(t => dbPhraseToTranslationResult(t._1, t._2)))
+      .map(_.map(t => dbPhraseToPhraseTranslationResultDto(t._1, t._2)))
       .map(list => Ok(Json.toJson(list)))
   }
 
-  private def translateAndSave(wordToTranslate: String): Future[TranslationResult] =
+  private def translatePhraseAndSave(phrase: String): Future[PhraseTranslationResultDto] =
     ws
       .url("http://api.lingualeo.com/gettranslates?port=1001")
-      .post(Map("word" -> wordToTranslate))
+      .post(Map("word" -> phrase))
       .map(res => {
         val list = JsonPath.query("$.translate[*]['value', 'pic_url', 'votes']", new ObjectMapper().readValue(res.body, classOf[Object]))
 
         var translations = list.right.get.toList.grouped(3).toList
           .map(l => DbTranslation(None, None, l(0).toString, l(1).toString, l(2).toString.toLong))
 
-        (DbPhrase(None, wordToTranslate, new Timestamp(new Date().getTime)), translations)
+        (DbPhrase(None, phrase, new Timestamp(new Date().getTime)), translations)
       })
       .flatMap(phraseTranslations => translationRepository.add(phraseTranslations._1, phraseTranslations._2))
-      .map(phraseTranslations => dbPhraseToTranslationResult(phraseTranslations._1, phraseTranslations._2))
+      .map(phraseTranslations => dbPhraseToPhraseTranslationResultDto(phraseTranslations._1, phraseTranslations._2))
 
-  private def dbPhraseToTranslationResult(p: DbPhrase, ts: Seq[DbTranslation]) =
-    TranslationResult(p.id.get, p.text, p.createdAt.getTime, ts.map(dbTranslationToTranslationDto))
+  private def dbPhraseToPhraseTranslationResultDto(p: DbPhrase, ts: Seq[DbTranslation]) =
+    PhraseTranslationResultDto(p.id.get, p.text, p.createdAt.getTime, ts.map(dbTranslationToTranslationDto))
 
   private def dbTranslationToTranslationDto(t: DbTranslation) =
     TranslationDto(t.id.get, t.value, t.picture, t.votes)
 }
 
 case class TranslationDto(id: Long, value: String, picture: String, votes: Long)
-case class TranslationResult(id: Long, phrase: String, date: Long, translations: Seq[TranslationDto])
+case class PhraseTranslationResultDto(id: Long, text: String, date: Long, translations: Seq[TranslationDto])
