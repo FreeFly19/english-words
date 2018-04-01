@@ -66,4 +66,10 @@ class PhrasesRepository @Inject()(dbConfigProvider: DatabaseConfigProvider)(impl
 
     db.run(actions.transactionally)
   }
+
+  def deletePhrase(phraseId: Long): Future[Unit] =
+    db.run(DBIO.seq(
+        translations filter (_.phraseId === phraseId) delete,
+        phrases filter (_.id === phraseId) delete
+    ))
 }

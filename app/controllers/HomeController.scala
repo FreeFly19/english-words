@@ -50,6 +50,10 @@ class HomeController @Inject()(cc: ControllerComponents,
       .map(list => Ok(Json.toJson(list)))
   }
 
+  def deletePhrase(id: Long) = Action.async {
+    translationRepository.deletePhrase(id).map(_ => Ok)
+  }
+
   private def translatePhraseAndSave(phrase: String): Future[PhraseTranslationResultDto] =
     ws
       .url("http://api.lingualeo.com/gettranslates?port=1001")
