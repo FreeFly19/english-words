@@ -36,7 +36,7 @@ class PhrasesRepository @Inject()(dbConfigProvider: DatabaseConfigProvider)(impl
     def value = column[String]("value")
     def votes = column[Long]("votes")
 
-    def * = (id.?, phraseId.?, picture, value, votes) <> ((DbTranslation.apply _).tupled, DbTranslation.unapply)
+    def * = (id.?, phraseId.?, value, picture, votes) <> ((DbTranslation.apply _).tupled, DbTranslation.unapply)
     def phrase = foreignKey("phrase", phraseId, phrases)(_.id)
   }
 
